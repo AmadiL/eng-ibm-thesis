@@ -3,3 +3,5 @@ matplotlib
 numpy
 wfdb
 peakutils
+mpldatacursor
+ttkthemes

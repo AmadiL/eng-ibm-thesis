@@ -170,17 +170,17 @@ class ECGAnalyzer:
 
                 if RR_interval_avg:
                     # If RR interval average was calculated detect T peak and end of T wave
-                    T_end_idx, T_idx , T_shapes = self._LT_T_detect(RR_interval_avg=RR_interval_avg,
+                    T_end_idx, T_idx , T_shape = self._LT_T_detect(RR_interval_avg=RR_interval_avg,
                                                                     R_idx=R_idx,
                                                                     indices=indices,
                                                                     zero_indices=zero_indices,
-                                                                    T_shapes=T_shapes,
                                                                     signal=signal)
                     if T_end_idx is None or T_idx is None or T_shapes is None:
                         continue
                     # Record T peak and end of T wave
                     indices['T'] = np.append(indices['T'], T_idx)
                     indices['T_end'] = np.append(indices['T_end'], T_end_idx)
+                    T_shapes = np.append(T_shapes, T_shape)
                     # Calculate QT, QTP, QTc and QTPc intervals [ms]
                     QT_intervals = self._LT_intervals_calc(T_end_idx=T_end_idx,
                                                            T_idx=T_idx,
@@ -272,9 +272,7 @@ class ECGAnalyzer:
         P_idx = start + np.argmax(abs(self.filtered_ecg_signal[start:stop]))
         return P_idx
 
-
-
-    def _LT_T_detect(self, RR_interval_avg, R_idx, indices, zero_indices, T_shapes, signal):
+    def _LT_T_detect(self, RR_interval_avg, R_idx, indices, zero_indices, signal):
         bwind, ewind = (140, 500) if RR_interval_avg > 700 else (100, 0.7 * RR_interval_avg)
         bwind, ewind = ms_to_samples(bwind, self.fs), ms_to_samples(ewind, self.fs)
         bwind_idx = np.rint(R_idx + bwind).astype(int)  # window beginning
@@ -289,10 +287,10 @@ class ECGAnalyzer:
             T_i = window_min_idx
             if abs(signal[window_max_idx]) > 4 * abs(signal[window_min_idx]):
                 # If max is bigger than min -> T upward
-                T_shapes = np.append(T_shapes, 'up')
+                T_shape = 'up'
             else:
                 # If max is comparable to min -> T upward-downward
-                T_shapes = np.append(T_shapes, 'up-down')
+                T_shape = 'up-down'
         else:
             # If min is before max T is downward, downward-upward or upward-downward
             # We're looking for min2 from max to the end of the window
@@ -300,21 +298,21 @@ class ECGAnalyzer:
             T_i = window_min2_idx
             if abs(signal[window_max_idx]) < 4 * abs(signal[window_min2_idx]):
                 # If max is comparable to min2 -> T upward-downward
-                T_shapes = np.append(T_shapes, 'up-down')
+                T_shape = 'up-down'
             else:
                 # If max is bigger than min2
                 if abs(signal[window_min_idx]) > 4 * abs(signal[window_max_idx]):
                     # If min is bigger than max -> T downward
-                    T_shapes = np.append(T_shapes, 'down')
+                    T_shape = 'down'
                 else:
                     # If min is comparable to max -> T downward-upward
-                    T_shapes = np.append(T_shapes, 'down-up')
+                    T_shape = 'down-up'
         threshold_t = signal[T_i] / 2
         T_end_idx = T_i
         while T_end_idx < len(signal) and abs(signal[T_end_idx]) > abs(threshold_t):
             T_end_idx += 1
         T_idx = zero_indices[bisect.bisect_right(zero_indices, T_i) - 1]
-        return (T_end_idx - 1), T_idx, T_shapes
+        return (T_end_idx - 1), T_idx, T_shape
 
     def _LT_intervals_calc(self, T_end_idx, T_idx, QRS_start_idx, RR_interval):
         QT_interval = samples_to_ms(T_end_idx - QRS_start_idx, self.fs)  # milliseconds

@@ -11,6 +11,13 @@ import scipy
 from ECGAnalyzer import ECGAnalyzer
 from matplotlib import style
 from ttkthemes import ThemedStyle
+import numpy as np
+import csv
+
+SIGNALS = 'Sygnały'
+SPECTRA = 'Widma'
+INTERVALS = 'Interwały'
+WAVES_TABLE = 'Tabela załamków'
 
 
 class App(Frame):
@@ -38,6 +45,8 @@ class App(Frame):
 
         fileMenu = Menu(menubar, tearoff=0)
         fileMenu.add_command(label="Otwórz próbkę", command=self.onOpenSample)
+        fileMenu.add_command(label="Zapisz wszystko", command=self.onSaveAll)
+        fileMenu.add_command(label="Wyjdź", command=self.master.destroy)
         menubar.add_cascade(label="Plik", menu=fileMenu)
 
         self.topButtonFrame = Frame(self)
@@ -50,10 +59,11 @@ class App(Frame):
         self.plots_notebook = Notebook(self.menu_notebook)
         self.plots_notebook.pack(fill=BOTH, expand=True)
         self.create_plot_tabs()
-        self.menu_notebook.add(self.plots_notebook, text='Sygnały')
+        self.menu_notebook.add(self.plots_notebook, text=SIGNALS)
         self.spectra_notebook = None
         self.table = None
         self.table_sb = None
+        self.intervals_notebook = None
 
     def create_plot_tabs(self):
         # Plots
@@ -95,14 +105,14 @@ class App(Frame):
             self.spectra_notebook.add(self.spectra_tabs[tab]['frame'], text='{}. {}'.format(i + 1, tab))
 
         if add_to_menu:
-            self.menu_notebook.add(self.spectra_notebook, text='Widma')
+            self.menu_notebook.add(self.spectra_notebook, text=SPECTRA)
 
     def create_table(self):
         if self.table is not None:
             self.table.destroy()
             self.table_sb.destroy()
         self.table = Treeview(self.menu_notebook, show='headings', selectmode='browse')
-        self.table['columns'] = tuple(sorted(self.ecg.indices.keys()))
+        self.table['columns'] = tuple(sorted(self.ecg.indices.keys()) + ['Morfologia_T'])
         self.table.pack(side=LEFT)
 
         self.table_sb = Scrollbar(self.menu_notebook, orient="vertical", command=self.table.yview)
@@ -111,18 +121,74 @@ class App(Frame):
         self.table.configure(yscrollcommand=self.table_sb.set)
 
         rows = 0
-        for i, v in sorted(self.ecg.indices.items()):
+        for i, v in sorted(self.ecg.indices.items()) + [('Morfologia_T', self.ecg.T_shapes)]:
             rows = max(rows, len(v))
             self.table.heading(i, text=i)
             self.table.column(i, minwidth=0, width=100, stretch=True)
         for row in range(rows):
             text = []
-            for i, v in sorted(self.ecg.indices.items()):
+            for i, v in sorted(self.ecg.indices.items()) + [('Morfologia_T', self.ecg.T_shapes)]:
                 value = v[row] if row < len(v) else None
                 text.append(value)
             self.table.insert('', 'end', text=row, values=tuple(text))
-        self.menu_notebook.add(self.table, text='Tabela')
+        self.menu_notebook.add(self.table, text=WAVES_TABLE)
 
+    def create_intervals_tabs(self):
+        # Intervals
+        intervals = ['Wykres RR', 'Wykres QT', 'Tabela']
+        PLOT_R = intervals[0]
+        PLOT_QT = intervals[1]
+        TABLE = intervals[2]
+        if self.intervals_notebook is None:
+            self.intervals_notebook = Notebook(self.menu_notebook)
+            self.intervals_notebook.pack(fill=BOTH, expand=True)
+            self.intervals_tabs = {}
+            add_to_menu = True
+        else:
+            self.intervals_tabs[PLOT_R]['frame'].destroy()
+            self.intervals_tabs[PLOT_QT]['frame'].destroy()
+            self.intervals_tabs[TABLE].destroy()
+            add_to_menu = False
+
+        # Plot R
+        self.intervals_tabs[PLOT_R] = {}
+        self.intervals_tabs[PLOT_R]['label'] = PLOT_R
+        self.intervals_tabs[PLOT_R]['frame'] = Frame(self.intervals_notebook)
+        self.intervals_tabs[PLOT_R]['frame'].pack(fill=BOTH, expand=True)
+        self.intervals_tabs[PLOT_R] = self.create_plot(self.intervals_tabs[PLOT_R])
+        self.draw_intervals(self.intervals_tabs[PLOT_R])
+        self.intervals_notebook.add(self.intervals_tabs[PLOT_R]['frame'], text=PLOT_R)
+
+        # Plot QT
+        self.intervals_tabs[PLOT_QT] = {}
+        self.intervals_tabs[PLOT_QT]['label'] = PLOT_QT
+        self.intervals_tabs[PLOT_QT]['frame'] = Frame(self.intervals_notebook)
+        self.intervals_tabs[PLOT_QT]['frame'].pack(fill=BOTH, expand=True)
+        self.intervals_tabs[PLOT_QT] = self.create_plot(self.intervals_tabs[PLOT_QT])
+        self.draw_intervals(self.intervals_tabs[PLOT_QT])
+        self.intervals_notebook.add(self.intervals_tabs[PLOT_QT]['frame'], text=PLOT_QT)
+
+        # Table
+        self.intervals_tabs[TABLE] = Treeview(self.menu_notebook, show='headings', selectmode='browse')
+        self.intervals_tabs[TABLE]['columns'] = sorted(self.ecg.intervals.keys())
+        self.intervals_tabs[TABLE].pack(fill=BOTH, expand=True)
+
+        rows = 0
+        for i, v in sorted(self.ecg.intervals.items()):
+            rows = max(rows, len(v))
+            text = '{} [ms]'.format(i) if i in ['QT', 'QTP', 'RR'] else i
+            self.intervals_tabs[TABLE].heading(i, text=text)
+            self.intervals_tabs[TABLE].column(i, minwidth=0, width=100, stretch=True)
+        for row in range(rows):
+            text = []
+            for i, v in sorted(self.ecg.intervals.items()):
+                value = v[row] if row < len(v) else None
+                text.append(value)
+            self.intervals_tabs[TABLE].insert('', 'end', text=row, values=tuple(text))
+        self.intervals_notebook.add(self.intervals_tabs[TABLE], text=TABLE)
+
+        if add_to_menu:
+            self.menu_notebook.add(self.intervals_notebook, text=INTERVALS)
 
     def onOpenSample(self):
         ftypes = [('dat', '*.dat'), ('Wszystkie pliki', '*')]
@@ -135,7 +201,60 @@ class App(Frame):
             self.ecg.calculate()
             self.create_plot_tabs()
             self.create_spectra_tabs()
+            self.create_intervals_tabs()
             self.create_table()
+            self.menu_notebook.select(self.plots_notebook)
+
+    def onSaveSample(self):
+        dlg = filedialog.SaveAs(self)
+        fl = dlg.show()
+        if fl != '' and len(fl) != 0:
+            tab = self.menu_notebook.tab(self.menu_notebook.select(), 'text')
+            if tab == SIGNALS:
+                signal_id = self.plots_notebook.index(self.plots_notebook.select())
+                self.save_signal(filename=fl, all=False, id=signal_id)
+            elif tab == SPECTRA:
+                pass
+            elif tab == INTERVALS:
+                pass
+            elif tab == WAVES_TABLE:
+                pass
+
+    def onSaveAll(self):
+        dlg = filedialog.SaveAs(self)
+        fl = dlg.show()
+        if fl != '' and len(fl) != 0:
+            self.save_all(fl)
+
+    def save_signal(self,filename, all=False, id=None):
+        signals = [self.ecg.ecg_signal, self.ecg.no_drift_ecg_signal, self.ecg.filtered_ecg_signal,
+                   self.ecg.differentiated_ecg_signal, self.ecg.squared_ecg_signal, self.ecg.integrated_ecg_signal,
+                   self.ecg.filtered_ecg_signal]
+        names = ['raw', 'no_drift', 'filtered', 'differentiated', 'squared', 'integrated', 'filtered']
+        fs = ['fs', self.ecg.fs]
+        if not all:
+            name = ['title', names[id]]
+            signal = [names[id], *signals[id]]
+            data = [name, fs, signal]
+        else:
+            name = ['title', 'all']
+            signals_data = [[n, *s] for n, s in zip(names[:-1], signals[:-1])]
+            indices_data = [[n, *i] for n, i in self.ecg.indices.items()]
+            tm_data = ['T_morphology', *self.ecg.T_shapes]
+            intervals_data = [[n, *i] for n, i in self.ecg.intervals.items()]
+            data = [name, fs, *signals_data, *indices_data, tm_data, *intervals_data]
+
+        for d in data:
+            append = max([len(i) for i in data]) - len(d)
+            d += [''] * append
+        data = zip(*data)
+        filename = '{}.csv'.format(filename)
+        with open(filename, 'w', newline='') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            [csvwriter.writerow(row) for row in data]
+
+    def save_all(self, filename):
+        self.save_signal(filename, all=True)
 
     def create_plot(self, tab):
         tab['fig'] = Figure(figsize=(5, 5), dpi=100)
@@ -152,6 +271,47 @@ class App(Frame):
         toolbar.update()
         canvas._tkcanvas.pack(side=TOP, fill=BOTH, expand=True)
         return canvas, toolbar
+
+    def draw_intervals(self, tab):
+        lines = []
+        if tab['label'] == 'Wykres RR':
+            x = self.ecg.t[self.ecg.indices['R'][1:]]
+            y = self.ecg.intervals['RR']
+            lines = tab['plot'].plot(x, y)
+        else:
+            x = self.ecg.t[self.ecg.indices['T_end']]
+            y = self.ecg.intervals['QT']
+            lines.append(tab['plot'].plot(x, y, label='QT')[0])
+            y = self.ecg.intervals['QTP']
+            lines.append(tab['plot'].plot(x, y, label='QTP')[0])
+            tab['plot'].set_xlabel('Czas [s]')
+            tab['plot'].set_ylabel('QT')
+            # miny = min(np.append(self.ecg.intervals['QT'], self.ecg.intervals['QTP']))
+            # maxy = max(np.append(self.ecg.intervals['QT'], self.ecg.intervals['QTP']))
+            # print(miny, maxy)
+            # tab['plot'].set_ylim(miny - 0.1 * (maxy - miny), maxy + 0.1 * (maxy - miny))
+            tab['plot'].tick_params('y')
+            tab['plot2'] = tab['plot'].twinx()
+            y = self.ecg.intervals['QTc']
+            lines.append(tab['plot2'].plot(x, y, '--', label='QTc')[0])
+            y = self.ecg.intervals['QTPc']
+            lines.append(tab['plot2'].plot(x, y, '--', label='QTPc')[0])
+            tab['plot2'].set_ylabel('QT corrected')
+            # miny = min(np.append(self.ecg.intervals['QTc'], self.ecg.intervals['QTPc']))
+            # maxy = max(np.append(self.ecg.intervals['QTc'], self.ecg.intervals['QTPc']))
+            # print(miny, maxy)
+            # tab['plot2'].set_ylim(miny - 0.1 * (maxy - miny), maxy + 0.1 * (maxy - miny))
+            tab['plot2'].tick_params('y')
+            tab['fig'].tight_layout()
+            tab['fig'].legend(lines, ['QT', 'QTP', 'QTc', 'QTPc'])
+
+            # for i, v in sorted(self.ecg.intervals.items()):
+            #     if i == 'RR':
+            #         continue
+            #     if i == 'QT' or i == 'QTP':
+            #         x = self.ecg.t[self.ecg.indices['T_end']]
+            #         lines += tab['plot'].plot(x, v)
+            #         tab['plot'].set_ylabel('QT')
 
     def draw_spectrum(self, tab):
         spectrum = None
@@ -184,23 +344,22 @@ class App(Frame):
                     y = self.ecg.integrated_ecg_signal
                 if y is not None and x is not None:
                     line = tab['plot'].plot(x, y, label=tab['label'])
-                    tab['plot'].legend(line)
+                    tab['fig'].legend(line, [tab['label']])
             else:
                 self.plot_result(tab)
             tab['plot'].axhline(0, color='red')
             tab['plot'].set_xlabel('Czas [s]')
             tab['plot'].set_ylabel('Amplituda')
-            tab['plot'].legend()
 
     def plot_result(self, tab):
         lines = []
         tab['plot'].plot(self.ecg.t, self.ecg.filtered_ecg_signal)
         tab['plot'].plot(self.ecg.t, self.ecg.differentiated_ecg_signal)
-        for i, v in self.ecg.indices.items():
+        for i, v in sorted(self.ecg.indices.items()):
             x = self.ecg.t[v]
             y = self.ecg.filtered_ecg_signal[v]
             lines += tab['plot'].plot(x, y, 'o', label=i)
-        tab['plot'].legend(lines)
+        tab['fig'].legend(lines, sorted(self.ecg.indices.keys()))
 
     def draw_heart(self, a):
         x = scipy.linspace(-2, 2, 1000)

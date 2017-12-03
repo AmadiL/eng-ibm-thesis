@@ -17,11 +17,20 @@ class ECGAnalyzer:
     Class for ECG analysis.
     """
     def __init__(self, samplepath):
-        # self.sample_data_path = SAMPLE_DATA_DIR + '/patient001/s0010_re'
         self.sample_data_path = samplepath
-        self.wfdb_record = wfdb.rdsamp(self.sample_data_path)
+        if self.sample_data_path[-4:] == '.csv':
+            with open(self.sample_data_path, 'r') as file:
+                sample = np.fromstring(file.read(), dtype=np.float64, sep=os.linesep)
+                fs = int(sample[0])
+                signal = sample[1:]
+        else:
+            self.wfdb_record = wfdb.rdsamp(self.sample_data_path)
+            fs = self.wfdb_record.fs
+            signal = [np.array(i, dtype=np.float64) for i in zip(*self.wfdb_record.p_signals)][0]
 
-        self.fs = self.wfdb_record.fs  # Hz
+        self.fs = fs  # Hz
+        self.ecg_signal = signal
+
         self.dt = 1 / self.fs
         self.nyquist_f = self.fs/2  # Hz
         self.lowpass_fc = 15  # Hz
@@ -31,7 +40,6 @@ class ECGAnalyzer:
         self.highpass_order = 2
         self.integration_window_length = int(0.15 * self.fs)
 
-        self.ecg_signal = [np.array(i, dtype=np.float32) for i in zip(*self.wfdb_record.p_signals)][0]
         self.length = self.ecg_signal.__len__()
         self.t = np.arange(self.length) / self.fs
 
@@ -53,11 +61,9 @@ class ECGAnalyzer:
         self.differentiated_ecg_signal = self._derivative(self.filtered_ecg_signal)
         # Squaring
         self.squared_ecg_signal = self._squaring(self.differentiated_ecg_signal)
-        # Moving-Window Integration
+        # Moving-Window integration
         self.integrated_ecg_signal = self._moving_window_integral(self.squared_ecg_signal)
-        # plt.plot(self.t, self.differentiated_ecg_signal)
-        # plt.plot(self.t, self.filtered_ecg_signal)
-        # plt.show(block=True)
+        # Laguna-Thakor detection algorithm
         self.indices, self.intervals, self.T_shapes = self._detection_laguna_thakor(self.differentiated_ecg_signal)
         # self._detection_pan_tompkins(self.filtered_ecg_signal)
 
@@ -80,15 +86,6 @@ class ECGAnalyzer:
                 running_estimate_noise_peak = 0.125 * peak_val + 0.875 * running_estimate_noise_peak
             first_peak_threshold = running_estimate_noise_peak \
                                    + 0.25 * (running_estimate_signal_peak - running_estimate_noise_peak)
-        # plt.figure(0)
-        # plt.plot(self.t, self.filtered_ecg_signal)
-        # plt.plot(self.t, self.differentiated_ecg_signal)
-        # plt.plot(self.t, self.squared_ecg_signal, 'g')
-        # plt.plot(self.t, self.integrated_ecg_signal)
-        # plt.plot(self.t[qrs_indices], self.filtered_ecg_signal[qrs_indices], 'ro')
-        # plt.figure(1)
-        # plt.plot(self.t[qrs_indices], self.filtered_ecg_signal[qrs_indices], 'ro')
-        # plt.show(block=True)
         return qrs_indices, noise_indices
 
     def _detection_laguna_thakor(self, signal):
@@ -193,36 +190,6 @@ class ECGAnalyzer:
                     intervals['QTc'] = np.append(intervals['QTc'], QT_corrected_interval)
                     intervals['QTPc'] = np.append(intervals['QTPc'], QT_peak_corrected_interval)
 
-        # plt.figure(0)
-        # plt.plot(self.t, self.filtered_ecg_signal)
-        # plt.axhline(0, color='black')
-        # plt.plot(self.t[indices['Q']], self.filtered_ecg_signal[indices['Q']], 'ro')
-        # plt.plot(self.t[indices['R']], self.filtered_ecg_signal[indices['R']], 'go')
-        # plt.plot(self.t[indices['S']], self.filtered_ecg_signal[indices['S']], 'yo')
-        # plt.plot(self.t[indices['QRS_start']], self.filtered_ecg_signal[indices['QRS_start']], 'bx')
-        # plt.plot(self.t[indices['P']], self.filtered_ecg_signal[indices['P']], 'mo')
-        # plt.plot(self.t[indices['T']], self.filtered_ecg_signal[indices['T']], 'co')
-        # plt.plot(self.t[indices['T_end']], self.filtered_ecg_signal[indices['T_end']], 'mx')
-        # plt.plot(self.t, signal)
-        # plt.figure(1)
-        # plt.plot(self.t, self.ecg_signal)
-        # plt.figure(2)
-        # plt.plot(self.t, self.no_drift_ecg_signal)
-        # plt.plot(self.t, self.filtered_ecg_signal)
-        # fig, ax1 = plt.subplots()
-        # ax1.plot(1e3 * (self.t[indices['T_end']]) / self.fs, intervals['QT'], 'r')
-        # ax1.plot(1e3 * (self.t[indices['T_end']]) / self.fs, intervals['QTP'], 'g')
-        # ax1.set_xlabel('time [s]')
-        # ax1.set_ylabel('QT')
-        # ax1.tick_params('y', colors='r')
-        # ax2 = ax1.twinx()
-        # ax2.plot(1e3 * (self.t[indices['T_end']]) / self.fs, intervals['QTc'], 'b')
-        # ax2.plot(1e3 * (self.t[indices['T_end']]) / self.fs, intervals['QTPc'], 'c')
-        # ax2.set_ylabel('QT_corrected')
-        # ax2.tick_params('y', colors='b')
-        # fig.tight_layout()
-        #
-        # plt.show(block=True)
         return indices, intervals, T_shapes
 
     def _LT_QRS_detect(self, threshold_n, idx, peak_idx, peak_val, peak_indices, zero_indices, signal):

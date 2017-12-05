@@ -12,6 +12,7 @@ from ECGAnalyzer import ECGAnalyzer
 from matplotlib import style
 from ttkthemes import ThemedStyle
 import csv
+import traceback
 
 SIGNALS = 'Sygnały'
 SPECTRA = 'Widma'
@@ -73,7 +74,7 @@ class App(Frame):
             plots = ['Witaj!']
             self.plot_tabs = {}
         else:
-            plots = ['Surowe EKG', 'Bez dryfu', 'Przefiltrowane', 'Zróżniczkowane', 'Do kwadratu', 'Scałkowane', 'Wynik']
+            plots = ['Surowe EKG', 'Filtracja górnoprzepustowa', 'Filtracja dolnoprzepustowa', 'Różniczkowanie', 'Potęgowanie', 'Całkowanie', 'Wynik']
             [tab['frame'].destroy() for tab in self.plot_tabs.values()]
 
         for i, tab in enumerate(plots):
@@ -90,7 +91,7 @@ class App(Frame):
 
     def create_spectra_tabs(self):
         # Spectra
-        spectra = ['Surowe EKG', 'Przefiltrowane']
+        spectra = ['Surowe EKG', 'Filtracja']
         if self.spectra_notebook is None:
             self.spectra_notebook = Notebook(self.menu_notebook)
             self.spectra_notebook.pack(fill=BOTH, expand=True)
@@ -234,6 +235,7 @@ class App(Frame):
                 self.fileMenu.entryconfig('Zapisz wszystko', state=NORMAL)
         except Exception as e:
             messagebox.showerror("Otwórz próbkę", e)
+            print(traceback.format_exc())
 
     def onSaveSample(self):
         try:
@@ -257,6 +259,7 @@ class App(Frame):
                     pass
         except Exception as e:
             messagebox.showerror("Zapisz dane", e)
+            print(traceback.format_exc())
 
     def onSaveAll(self):
         try:
@@ -268,6 +271,7 @@ class App(Frame):
                 self.save_all(fl)
         except Exception as e:
             messagebox.showerror("Zapisz wszystko", e)
+            print(traceback.format_exc())
 
     def save_waves_table(self, filename):
         indices_data = [[n, *i] for n, i in self.ecg.indices.items()]
@@ -383,7 +387,7 @@ class App(Frame):
         if tab['label'] == 'Surowe EKG':
             title = 'Widmo EKG'
             spectrum = self.ecg.spectrum(self.ecg.ecg_signal)
-        elif tab['label'] == 'Przefiltrowane':
+        elif tab['label'] == 'Filtracja':
             title = 'Widmo EKG po filtracji'
             spectrum = self.ecg.spectrum(self.ecg.filtered_ecg_signal)
         if spectrum is not None:
@@ -402,20 +406,20 @@ class App(Frame):
                 if tab['label'] == 'Surowe EKG':
                     title = 'EKG'
                     y = self.ecg.ecg_signal
-                elif tab['label'] == 'Bez dryfu':
-                    title = 'EKG + filtracja górnoprzepustowa'
+                elif tab['label'] == 'Filtracja górnoprzepustowa':
+                    title = 'EKG po filtracji górnoprzepustowej'
                     y = self.ecg.no_drift_ecg_signal
-                elif tab['label'] == 'Przefiltrowane':
-                    title = 'EKG + filtracja górno- i dolnoprzepustowa'
+                elif tab['label'] == 'Filtracja dolnoprzepustowa':
+                    title = 'EKG po filtracji górno- i dolnoprzepustowej'
                     y = self.ecg.filtered_ecg_signal
-                elif tab['label'] == 'Zróżniczkowane':
-                    title = 'EKG + filtracja + różniczkowanie'
+                elif tab['label'] == 'Różniczkowanie':
+                    title = 'EKG po filtracji i różniczkowaniu'
                     y = self.ecg.differentiated_ecg_signal
-                elif tab['label'] == 'Do kwadratu':
-                    title = '(EKG + filtracja + różniczkowanie)²'
+                elif tab['label'] == 'Potęgowanie':
+                    title = 'EKG po filtracji, różniczkowaniu i potęgowaniu'
                     y = self.ecg.squared_ecg_signal
-                elif tab['label'] == 'Scałkowane':
-                    title = '(EKG + filtracja + różniczkowanie)² + całkowanie'
+                elif tab['label'] == 'Całkowanie':
+                    title = 'EKG po filtracji, różniczkowaniu, potęgowaniu i całkowaniu'
                     y = self.ecg.integrated_ecg_signal
                 if y is not None and x is not None:
                     line = tab['plot'].plot(x, y, label=tab['label'])
@@ -428,9 +432,11 @@ class App(Frame):
             tab['plot'].set_ylabel('Amplituda')
 
     def plot_result(self, tab):
-        title = 'EKG + filtracja + wynik detekcji załamków'
+        title = 'EKG po filtracji i wynik detekcji załamków'
         lines = []
         tab['plot'].plot(self.ecg.t, self.ecg.filtered_ecg_signal)
+        # tab['plot'].plot(self.ecg.t, self.ecg.differentiated_ecg_signal)
+        # tab['plot'].plot(self.ecg.t, self.ecg._derivative(self.ecg.differentiated_ecg_signal))
         for i, v in sorted(self.ecg.indices.items()):
             x = self.ecg.t[v]
             y = self.ecg.filtered_ecg_signal[v]
@@ -468,6 +474,7 @@ def main():
         app.mainloop()
     except Exception as e:
         messagebox.showerror('Error', e)
+        print(traceback.format_exc())
 
 
 if __name__ == '__main__':

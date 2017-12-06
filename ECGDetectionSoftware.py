@@ -271,7 +271,7 @@ class App(Frame):
                 self.save_all(fl)
         except Exception as e:
             messagebox.showerror("Zapisz wszystko", e)
-            print(traceback.format_exc())
+            traceback.format_exc()
 
     def save_waves_table(self, filename):
         indices_data = [[n, *i] for n, i in self.ecg.indices.items()]
@@ -395,6 +395,7 @@ class App(Frame):
             line = tab['plot'].plot(spectrum.f, spectrum.y)
             tab['plot'].set_xlabel('Częstotliwość [Hz]')
             tab['plot'].set_ylabel('Amplituda')
+            tab['plot'].set_xscale('log')
             tab['fig'].legend(line, ['Widmo'])
 
     def draw_plot(self, tab):

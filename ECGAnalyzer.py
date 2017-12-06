@@ -31,16 +31,16 @@ class ECGAnalyzer:
         self.fs = fs  # Hz
         self.ecg_signal = signal
 
-        self.dt = 1 / self.fs
+        self.dt = 1 / self.fs  # seconds
         self.nyquist_f = self.fs/2  # Hz
         self.lowpass_fc = 20  # Hz
         self.highpass_fc = 1  # Hz
 
         self.lowpass_order = 3
         self.highpass_order = 2
-        self.integration_window_length = int(0.15 * self.fs)
+        self.integration_window_length = int(0.15 * self.fs)  # samples
 
-        self.length = self.ecg_signal.__len__()
+        self.length = self.ecg_signal.__len__()  # samples
         self.t = np.arange(self.length) / self.fs
 
         self.no_drift_ecg_signal = None
@@ -69,7 +69,6 @@ class ECGAnalyzer:
 
     def _detection_pan_tompkins(self, signal):
         peaks = peakutils.indexes(signal, thres=0)
-        last_peak_idx = 0
         running_estimate_signal_peak = 0
         running_estimate_noise_peak = 0
         first_peak_threshold = 0
@@ -236,14 +235,7 @@ class ECGAnalyzer:
         ewind_idx = peak_indices[bisect.bisect_right(peak_indices, QRS_start_idx) - 1]
         if bwind_idx >= len(signal) or ewind_idx >= len(signal) or bwind_idx == ewind_idx:
             return None
-        window_max_idx = bwind_idx + np.argmax(signal[bwind_idx:ewind_idx])
-        window_min_idx = bwind_idx + np.argmin(signal[bwind_idx:ewind_idx])
-        P_i = max(window_min_idx, window_max_idx)
-        P_idx = zero_indices[bisect.bisect_right(zero_indices, P_i) - 1]
-        P_idx = bwind_idx + np.argmax(abs(self.filtered_ecg_signal[bwind_idx:ewind_idx]))
-        # start, stop = min(window_max_idx, window_min_idx), max(window_max_idx, window_min_idx)
-        # # P_idx = window_max_idx + np.argmax(self.filtered_ecg_signal[window_max_idx:window_min_idx])
-        # P_idx = start + np.argmax(abs(self.filtered_ecg_signal[start:stop]))
+        P_idx = bwind_idx + np.argmax(self.filtered_ecg_signal[bwind_idx:ewind_idx])
         return P_idx
 
     def _LT_T_detect(self, RR_interval_avg, R_idx, indices, zero_indices, signal):
@@ -317,7 +309,8 @@ class ECGAnalyzer:
 
     @normalized
     def _moving_window_integral(self, signal):
-        b = np.ones(self.integration_window_length + 1) / (self.integration_window_length + 1)
+        window = self.integration_window_length + 1
+        b = np.ones(window) / (window)
         a = [1]
         f = fft.rfftfreq(self.length, self.dt)
         w, gd = group_delay((b, a), f)
